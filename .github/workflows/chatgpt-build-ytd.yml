@@ -1,0 +1,48 @@
+name: build-ytd-temp
+on:
+  push:
+    branches: [chatgpt-build-ytse-20260926]
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build modified YouSpeed D
+        run: |
+          set -euxo pipefail
+          brew install ldid
+          export THEOS="$RUNNER_TEMP/theos"
+          git clone --depth 1 --recursive https://github.com/theos/theos.git "$THEOS"
+          git clone --depth 1 https://github.com/PoomSmart/YouTubeHeader.git "$THEOS/include/YouTubeHeader"
+          git clone --depth 1 https://github.com/PoomSmart/PSHeader.git "$THEOS/include/PSHeader"
+          git clone --depth 1 https://github.com/PoomSmart/YouSpeed.git "$RUNNER_TEMP/YouSpeed"
+          git clone --depth 1 https://github.com/PoomSmart/YTVideoOverlay.git "$RUNNER_TEMP/YTVideoOverlay"
+          cp .chatgpt-ytd/YouSpeed_D.x "$RUNNER_TEMP/YouSpeed/Tweak.x"
+          cd "$RUNNER_TEMP/YouSpeed"
+          make clean all FINALPACKAGE=1
+          cp "$(find .theos -type f -name YouSpeed.dylib | head -1)" "$GITHUB_WORKSPACE/YouSpeed_D.dylib"
+          file "$GITHUB_WORKSPACE/YouSpeed_D.dylib"
+          shasum -a 256 "$GITHUB_WORKSPACE/YouSpeed_D.dylib"
+
+      - name: Build YTLite bridge D
+        run: |
+          xcrun --sdk iphoneos clang \
+            -target arm64-apple-ios13.0 \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -fobjc-arc -fblocks -O2 -dynamiclib \
+            -Wno-deprecated-declarations \
+            -framework Foundation -framework UIKit -framework CoreGraphics \
+            -install_name @rpath/YTSpeedEnhancer.dylib \
+            -o YTSpeedEnhancer_D.dylib \
+            .chatgpt-ytd/YTSpeedBridge_D.m
+          file YTSpeedEnhancer_D.dylib
+          shasum -a 256 YTSpeedEnhancer_D.dylib
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YouSpeed-TestD
+          path: |
+            YouSpeed_D.dylib
+            YTSpeedEnhancer_D.dylib
+          retention-days: 1
